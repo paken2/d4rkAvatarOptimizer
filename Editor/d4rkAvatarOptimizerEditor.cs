@@ -148,13 +148,13 @@ public class d4rkAvatarOptimizerEditor : Editor
         ToggleOptimizerProperty(nameof(optimizer.DeleteUnusedGameObjects));
         ToggleOptimizerProperty(nameof(optimizer.UseRingFingerAsFootCollider));
 
-        if (optimizer.ExcludeTransforms == null)
-            optimizer.ExcludeTransforms = new List<Transform>();
+        optimizer.ExcludeTransforms ??= new List<Transform>();
+        optimizer.ExcludeTransformChildren ??= new List<bool>();
         if (Foldout($"Exclusions ({optimizer.ExcludeTransforms.Count})", ref optimizer.ShowExcludedTransforms))
         {
             using (new EditorGUI.IndentLevelScope())
             {
-                DynamicTransformList(optimizer, nameof(optimizer.ExcludeTransforms));
+                DynamicExclusionList(optimizer);
             }
         }
 
@@ -1440,63 +1440,64 @@ public class d4rkAvatarOptimizerEditor : Editor
         }
     }
 
-    private void DynamicTransformList(Object obj, string propertyPath)
+    private void DynamicExclusionList(d4rkAvatarOptimizer optimizer)
     {
-        using (var serializedObject = new SerializedObject(obj))
+        using var serializedObject = new SerializedObject(optimizer);
+        var transforms = serializedObject.FindProperty(nameof(optimizer.ExcludeTransforms));
+        var includeChildren = serializedObject.FindProperty(nameof(optimizer.ExcludeTransformChildren));
+
+        while (includeChildren.arraySize < transforms.arraySize)
         {
-            // Find the SerializedProperty representing the list of Transforms
-            SerializedProperty listProperty = serializedObject.FindProperty(propertyPath);
-
-            // Add a null element at the end of the list for the user to add new elements
-            listProperty.InsertArrayElementAtIndex(listProperty.arraySize);
-            SerializedProperty newElement = listProperty.GetArrayElementAtIndex(listProperty.arraySize - 1);
-            newElement.objectReferenceValue = null;
-
-            for (int i = 0; i < listProperty.arraySize; i++)
-            {
-                SerializedProperty element = listProperty.GetArrayElementAtIndex(i);
-                Transform output = null;
-
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    output = EditorGUILayout.ObjectField(element.objectReferenceValue, typeof(Transform), true) as Transform;
-
-                    if (i == listProperty.arraySize - 1)
-                    {
-                        GUILayout.Space(23);
-                    }
-                    else if (GUILayout.Button("X", GUILayout.Width(20)))
-                    {
-                        output = null;
-                    }
-                }
-
-                if (element.objectReferenceValue != output)
-                {
-                    ClearUICaches();
-                }
-
-                if (output != null && optimizer.GetTransformPathToRoot(output) == null)
-                {
-                    output = null;
-                }
-
-                element.objectReferenceValue = output;
-            }
-
-            // Remove any null elements from the list
-            for (int i = listProperty.arraySize - 1; i >= 0; i--)
-            {
-                SerializedProperty element = listProperty.GetArrayElementAtIndex(i);
-                if (element.objectReferenceValue == null)
-                {
-                    listProperty.DeleteArrayElementAtIndex(i);
-                }
-            }
-
-            // Apply the modified properties to the serializedObject
-            serializedObject.ApplyModifiedProperties();
+            includeChildren.InsertArrayElementAtIndex(includeChildren.arraySize);
+            includeChildren.GetArrayElementAtIndex(includeChildren.arraySize - 1).boolValue = true;
         }
+        while (includeChildren.arraySize > transforms.arraySize)
+            includeChildren.DeleteArrayElementAtIndex(includeChildren.arraySize - 1);
+
+        transforms.InsertArrayElementAtIndex(transforms.arraySize);
+        transforms.GetArrayElementAtIndex(transforms.arraySize - 1).objectReferenceValue = null;
+        includeChildren.InsertArrayElementAtIndex(includeChildren.arraySize);
+        includeChildren.GetArrayElementAtIndex(includeChildren.arraySize - 1).boolValue = true;
+
+        for (int i = 0; i < transforms.arraySize; i++)
+        {
+            var transform = transforms.GetArrayElementAtIndex(i);
+            var children = includeChildren.GetArrayElementAtIndex(i);
+            Transform output;
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                output = EditorGUILayout.ObjectField(transform.objectReferenceValue, typeof(Transform), true) as Transform;
+                if (i == transforms.arraySize - 1)
+                {
+                    GUILayout.Space(46);
+                }
+                else
+                {
+                    children.boolValue = GUILayout.Toggle(children.boolValue,
+                        new GUIContent("C", "Also exclude all children of this transform recursively"), GUI.skin.button, GUILayout.Width(20));
+                    if (GUILayout.Button("X", GUILayout.Width(20)))
+                        output = null;
+                }
+            }
+
+            if (transform.objectReferenceValue != output)
+                ClearUICaches();
+            if (output != null && optimizer.GetTransformPathToRoot(output) == null)
+                output = null;
+            transform.objectReferenceValue = output;
+        }
+
+        for (int i = transforms.arraySize - 1; i >= 0; i--)
+        {
+            if (transforms.GetArrayElementAtIndex(i).objectReferenceValue != null)
+                continue;
+            transforms.DeleteArrayElementAtIndex(i);
+            includeChildren.DeleteArrayElementAtIndex(i);
+        }
+
+        if (serializedObject.ApplyModifiedProperties())
+            ClearUICaches();
     }
 
     static GUIContent _perfIcon_Excellent;

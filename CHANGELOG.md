@@ -1,11 +1,14 @@
 ## v4.6.0
 ### Features
 * Add new option `Delete Unused Animator Parameters`.
+* Manual exclusions can now specify if they want to exclude all their children or not.
+  * Old way was always exclude all children and is still the default.
 
 ### Changes
 * Optimizer inspector:
   * Replace the Ko-fi button with an open log file button.
   * Add a Ko-fi button to the settings window.
+* Sub animator auto exclusions no longer exclude children of the animated game objects. [(more)](https://github.com/d4rkc0d3r/d4rkAvatarOptimizer/issues/191)
 
 ### Bug Fixes
 * Shader Optimizer:
