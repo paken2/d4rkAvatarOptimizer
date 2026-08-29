@@ -995,6 +995,14 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
         return Enumerable.Range(0, mesh.subMeshCount).Sum(i => mesh.GetIndexCount(i) / (mesh.GetTopology(i) == MeshTopology.Quads ? 2 : 3));
     }
 
+    private static bool HasExtraMaterialSlots(Renderer renderer)
+    {
+        if (renderer == null)
+            return false;
+        var mesh = renderer.GetSharedMesh();
+        return mesh != null && renderer.sharedMaterials.Length > mesh.subMeshCount;
+    }
+
     public long GetRendererExtraMaterialSlotPolyCount(Renderer renderer)
     {
         if (renderer == null || !(renderer is SkinnedMeshRenderer || renderer is MeshRenderer))
@@ -1051,6 +1059,11 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
     {
         if (!MergeSkinnedMeshes)
             return "Merging skinned meshes is disabled";
+        var mesh = candidate.GetSharedMesh();
+        if (HasExtraMaterialSlots(candidate) && mesh.subMeshCount == 0)
+            return "Has material slots but no sub meshes";
+        if (HasExtraMaterialSlots(candidate) && GetPathToRoot(candidate) == "Body")
+            return "Body has more material slots than sub meshes and must remain the first renderer in a merge group";
         if (candidate.TryGetComponent(out Cloth cloth))
             return "Has Cloth component";
         if (candidate.transform == GetRootTransform())
@@ -1142,6 +1155,12 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
     {
         if (!MergeSkinnedMeshes)
             return "Merging skinned meshes is disabled";
+        bool candidateHasExtraMaterialSlots = HasExtraMaterialSlots(candidate);
+        bool groupHasExtraMaterialSlots = list.Any(HasExtraMaterialSlots);
+        if (candidateHasExtraMaterialSlots && groupHasExtraMaterialSlots)
+            return "Only one renderer with more material slots than sub meshes can be in a merge group";
+        if (groupHasExtraMaterialSlots)
+            return "Renderer with more material slots than sub meshes must be last in its merge group";
         if (list[0].gameObject.layer != candidate.gameObject.layer)
             return "Layers do not match";
         if (list[0].shadowCastingMode != candidate.shadowCastingMode)
@@ -1645,8 +1664,9 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
         List<(string group, string path, string message)> mergeErrors = logMergeErrors ? new() : null;
         slotSwapMaterials = FindAllMaterialSwapMaterials();
         var renderers = GetUsedComponentsInChildren<Renderer>()
-            .Select(r => (r, slashCount: GetPathToRoot(r).Count(c => c == '/'), path: GetPathToRoot(r)))
-            .OrderBy(t => t.path == "Body" ? 0 : 1)
+            .Select(r => (r, hasExtraMaterialSlots: HasExtraMaterialSlots(r), slashCount: GetPathToRoot(r).Count(c => c == '/'), path: GetPathToRoot(r)))
+            .OrderBy(t => t.hasExtraMaterialSlots ? 1 : 0)
+            .ThenBy(t => t.path == "Body" ? 0 : 1)
             .ThenBy(t => t.r == av.VisemeSkinnedMesh ? 0 : 1)
             .ThenBy(t => t.slashCount)
             .ThenBy(t => t.path)
@@ -5009,6 +5029,17 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
     {
         var candidateMat = candidate.material;
         var firstMat = list[0].material;
+        bool UsesRepeatedLastSubMesh(MaterialSlot slot)
+        {
+            if (slot.renderer == null)
+                return false;
+            var mesh = slot.renderer.GetSharedMesh();
+            return mesh != null
+                && slot.renderer.sharedMaterials.Length > mesh.subMeshCount
+                && slot.index >= Math.Max(0, mesh.subMeshCount - 1);
+        }
+        if (UsesRepeatedLastSubMesh(candidate) || list.Any(UsesRepeatedLastSubMesh))
+            return "Material slot uses the last sub mesh repeated by extra material slots";
         if (candidateMat == null || firstMat == null)
             return "One of the materials is null";
         if (firstMat.shader != candidateMat.shader)
@@ -5316,12 +5347,20 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
             {
                 var uniqueMeshIndices = new HashSet<int>();
                 var indexList = new List<int>();
+                bool createSubMesh = mesh.subMeshCount > 0 && matchedSlots[i][0].index < mesh.subMeshCount;
                 for (int k = 0; k < matchedSlots[i].Count; k++)
                 {
-                    var indexMap = new Dictionary<int, int>();
                     int internalMaterialID = uniqueMatchedSlots[i].Select((slot, index) => (slot, index)).First(t => t.slot.material == matchedSlots[i][k].material).index;
-                    int materialSubMeshId = Math.Min(mesh.subMeshCount - 1, matchedSlots[i][k].index);
-                    var sourceIndices = mesh.GetIndices(materialSubMeshId);
+                    var sourceIndices = mesh.subMeshCount == 0
+                        ? Array.Empty<int>()
+                        : mesh.GetIndices(Math.Min(mesh.subMeshCount - 1, matchedSlots[i][k].index));
+                    if (!createSubMesh)
+                    {
+                        foreach (int oldIndex in sourceIndices)
+                            uniqueMeshIndices.Add((int)sourceUv[0][oldIndex].z >> 12);
+                        continue;
+                    }
+                    var indexMap = new Dictionary<int, int>();
                     for (int j = 0; j < sourceIndices.Length; j++)
                     {
                         int oldIndex = sourceIndices[j];
@@ -5350,8 +5389,11 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
                         }
                     }
                 }
-                targetIndices.Add(indexList);
-                targetTopology.Add(mesh.GetTopology(Math.Min(matchedSlots[i][0].index, mesh.subMeshCount - 1)));
+                if (createSubMesh)
+                {
+                    targetIndices.Add(indexList);
+                    targetTopology.Add(mesh.GetTopology(matchedSlots[i][0].index));
+                }
                 mergedMeshIndices.Add(uniqueMeshIndices.ToList());
             }
 
@@ -5394,8 +5436,8 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
                 newMesh.SetNormals(targetNormals);
                 if (targetTangents.Any(t => t != Vector4.zero))
                     newMesh.SetTangents(targetTangents.Select(t => t == Vector4.zero ? new Vector4(1, 0, 0, 1) : t).ToArray());
-                newMesh.subMeshCount = matchedSlots.Count;
-                for (int i = 0; i < matchedSlots.Count; i++)
+                newMesh.subMeshCount = targetIndices.Count;
+                for (int i = 0; i < targetIndices.Count; i++)
                 {
                     newMesh.SetIndices(targetIndices[i].ToArray(), targetTopology[i], i);
                 }
@@ -5759,6 +5801,7 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
                     LogGrouping(sourcesWithExtraMaterialSlots.Select((mesh, index) => (mesh, mesh.transform, index)).GroupBy(x => x.transform).ToList(), "Extra material slot mesh");
             }
 
+            int targetMaterialSlotIndex = 0;
             foreach (SkinnedMeshRenderer skinnedMesh in basicMergedMeshesList)
             {
                 DisplayProgressBar($"Combining mesh ({++currentMeshCount}/{totalMeshCount}) {skinnedMesh.name}");
@@ -6040,15 +6083,18 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
 
                 for (var matID = 0; matID < skinnedMesh.sharedMaterials.Length; matID++)
                 {
-                    int clampedSubMeshID = Math.Min(matID, mesh.subMeshCount - 1);
-                    int[] indices = mesh.GetIndices(clampedSubMeshID);
+                    materialSlotRemap[(newPath, targetMaterialSlotIndex++)] = (currentMeshPath, matID);
+                }
+                int materialSubMeshCount = Math.Min(skinnedMesh.sharedMaterials.Length, mesh.subMeshCount);
+                for (var matID = 0; matID < materialSubMeshCount; matID++)
+                {
+                    int[] indices = mesh.GetIndices(matID);
                     for (uint i = 0; i < indices.Length; i++)
                     {
                         indices[i] += indexOffset;
                     }
-                    materialSlotRemap[(newPath, targetIndices.Count)] = (GetPathToRoot(skinnedMesh), matID);
                     targetIndices.Add(indices);
-                    targetTopology.Add(mesh.GetTopology(clampedSubMeshID));
+                    targetTopology.Add(mesh.GetTopology(matID));
                 }
             }
             Profiler.EndSection();

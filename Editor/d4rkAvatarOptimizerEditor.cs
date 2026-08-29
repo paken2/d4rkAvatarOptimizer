@@ -796,20 +796,6 @@ public class d4rkAvatarOptimizerEditor : Editor
                 "Check the Debug Info foldout for a full list at:\n\"Unmergable NaNimation by Animations\"", MessageType.Info);
         }
 
-        bool hasExtraMaterialSlots = optimizer.GetNonEditorOnlyComponentsInChildren<Renderer>()
-            .Where(r => !exclusions.Contains(r.transform))
-            .Where(r => r.GetSharedMesh() != null)
-            .Any(r => r.sharedMaterials.Length > r.GetSharedMesh().subMeshCount);
-
-        if (hasExtraMaterialSlots)
-        {
-            EditorGUILayout.HelpBox(
-                "Some renderers have more material slots than sub meshes.\n" + 
-                "Those extra materials & polys are not counted by VRChats performance system. " + 
-                "After optimizing those extra slots and polys will get baked as real ones.\n" + 
-                "You should expect your poly count to increase, this is working as intended!", MessageType.Info);
-        }
-
         var tools = optimizer.GetNonDestructiveToolsUsedOnAvatar();
         if (tools.Contains("VRCFury"))
         {

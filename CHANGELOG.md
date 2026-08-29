@@ -9,6 +9,10 @@
   * Replace the Ko-fi button with an open log file button.
   * Add a Ko-fi button to the settings window.
 * Sub animator auto exclusions no longer exclude children of the animated game objects. [(more)](https://github.com/d4rkc0d3r/d4rkAvatarOptimizer/issues/191)
+* A mesh merge group can contain only one renderer with more material slots than sub meshes.
+  * It is placed last so Unity's repeated-last-sub-mesh behavior is preserved.
+  * `Body` remains unmerged when it has extra material slots because it must be first in its merge group.
+  * No longer bake the extra material slots as real sub meshes. [(more)](https://github.com/d4rkc0d3r/d4rkAvatarOptimizer/pull/194)
 
 ### Bug Fixes
 * Shader Optimizer:
