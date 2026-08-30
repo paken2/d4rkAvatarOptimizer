@@ -18,12 +18,17 @@ However there are a couple things it does not consider breakage as otherwise alm
 
 ### Automatic exclusions
 If you are a prefab creator and one of your prefabs breaks due to any of the above reasons, contact me. I have an automatic exclusion system in place and we can work to either support the prefab outright or add detection for it.  
-Currently these get automatically excluded:
+Currently these systems get automatically excluded:
 - DPS/TPS/SPS Penetrator Mesh
 - Real Kiss System Mesh
 - `_VirtualLens_Root` from Virtual Lens
 
-Additionally, the optimizer automatically excludes everything that gets animated by any animator thats not on the avatar root.  
+Additionally, `SkinnedMeshRenderer`s that share a mesh with at least one other renderer and have more vertices than the `Shared Mesh Vertex Count Exclusion Threshold` from the Avatar Optimizer Settings window (default 1024) are automatically excluded unless `Allow Mesh Data Duplication` is enabled.  
+This is because duplicated mesh data from shared meshes can massively increase the size of the avatar.  
+Only the renderers themselves are excluded, not their children.
+
+Additionally, the optimizer automatically excludes the game objects that are animated by any animator thats not on the avatar root.  
+This only excludes the specific animated objects themselves and not their children.  
 It only supports the animator controllers specified in the vrc avatar descriptor for all the animation rewriting logic.
 
 ## Log file
