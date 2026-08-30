@@ -1092,8 +1092,8 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
         var mesh = candidate.GetSharedMesh();
         if (HasExtraMaterialSlots(candidate) && mesh.subMeshCount == 0)
             return "Has material slots but no sub meshes";
-        if (HasExtraMaterialSlots(candidate) && GetPathToRoot(candidate) == "Body")
-            return "Body has more material slots than sub meshes and must remain the first renderer in a merge group";
+        if (HasExtraMaterialSlots(candidate) && GetPathToRoot(candidate) == "Body" && MMDCompatibility)
+            return "Body has more material slots than sub meshes and must remain the first renderer in a merge group for MMD compatibility";
         if (candidate.TryGetComponent(out Cloth cloth))
             return "Has Cloth component";
         if (candidate.transform == GetRootTransform())
@@ -5636,6 +5636,8 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
                 bool foundMatch = false;
                 foreach (var subList in basicMergedMeshes)
                 {
+                    if (HasExtraMaterialSlots(renderer) && GetPathToRoot(subList[0]) == "Body" && MMDCompatibility)
+                        continue;
                     if (CanCombineRendererWithBasicMerge(subList, renderer, false) == null)
                     {
                         subList.Add(renderer);
@@ -5646,6 +5648,16 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
                 if (!foundMatch)
                 {
                     basicMergedMeshes.Add(new List<Renderer> { renderer });
+                }
+            }
+            for (int i = 0; i < basicMergedMeshes.Count; i++)
+            {
+                var subList = basicMergedMeshes[i];
+                if (HasExtraMaterialSlots(subList[^1]))
+                {
+                    basicMergedMeshes.RemoveAt(i);
+                    basicMergedMeshes.Add(subList);
+                    break;
                 }
             }
 
