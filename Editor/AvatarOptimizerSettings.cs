@@ -37,6 +37,12 @@ namespace d4rkpl4y3r.AvatarOptimizer
             private set => EditorPrefs.SetInt(PrefsPrefix + "MotionTimeApproximationSampleCount", value);
         }
 
+        public static int SharedMeshVertexCountExclusionThreshold
+        {
+            get => Mathf.Max(EditorPrefs.GetInt(PrefsPrefix + "SharedMeshVertexCountExclusionThreshold", 1024), 0);
+            private set => EditorPrefs.SetInt(PrefsPrefix + "SharedMeshVertexCountExclusionThreshold", Mathf.Max(value, 0));
+        }
+
         public static bool ProfileTimeUsedInUI
         {
             get => EditorPrefs.GetBool(PrefsPrefix + "ProfileTimeUsedInUI", false);
@@ -107,6 +113,7 @@ namespace d4rkpl4y3r.AvatarOptimizer
                     DoOptimizeInPlayMode = true;
                     AutoRefreshPreviewTimeout = 500;
                     MotionTimeApproximationSampleCount = 5;
+                    SharedMeshVertexCountExclusionThreshold = 1024;
                     ProfileTimeUsedInUI = false;
                 }
                 var trashBinPath = d4rkAvatarOptimizer.GetTrashBinLocation().path;
@@ -165,6 +172,9 @@ namespace d4rkpl4y3r.AvatarOptimizer
                 MotionTimeApproximationSampleCount = IntFieldLeft(
                     new GUIContent("Motion Time Approximation Sample Count", "The amount of samples used to approximate motion time states. Higher values are more accurate but generate more animation clips."),
                     MotionTimeApproximationSampleCount);
+                SharedMeshVertexCountExclusionThreshold = IntFieldLeft(
+                    new GUIContent("Shared Mesh Vertex Count Exclusion Threshold", "Skinned Mesh Renderers sharing mesh data above this vertex count are automatically excluded unless Allow Mesh Data Duplication is enabled."),
+                    SharedMeshVertexCountExclusionThreshold);
             }
 
             EditorGUILayout.Space();

@@ -45,12 +45,13 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
         public bool NaNimationAllow3BoneSkinning = false;
         public bool MergeSkinnedMeshesSeparatedByDefaultEnabledState = true;
         public bool MergeStaticMeshesAsSkinned = false;
+        public bool AllowMeshDataDuplication = false;
         public bool MergeDifferentPropertyMaterials = false;
         public bool MergeSameDimensionTextures = false;
         public bool MergeMainTex = false;
         public bool OptimizeFXLayer = true;
-        public bool DeleteUnusedAnimatorParameters = false;
         public bool CombineApproximateMotionTimeAnimations = false;
+        public bool DeleteUnusedAnimatorParameters = false;
         public bool DisablePhysBonesWhenUnused = true;
         public bool MergeSameRatioBlendShapes = true;
         public bool MMDCompatibility = true;
@@ -276,6 +277,7 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
     public bool DisablePhysBonesWhenUnused { get { return settings.DisablePhysBonesWhenUnused; } set { settings.DisablePhysBonesWhenUnused = value; } }
     public bool MergeSameRatioBlendShapes { get { return settings.MergeSameRatioBlendShapes; } set { settings.MergeSameRatioBlendShapes = value; } }
     public bool UseRingFingerAsFootCollider { get { return settings.UseRingFingerAsFootCollider; } set { settings.UseRingFingerAsFootCollider = value; } }
+    public bool AllowMeshDataDuplication { get { return settings.AllowMeshDataDuplication; } set { settings.AllowMeshDataDuplication = value; } }
 
     public bool CanChangeSetting(string fieldName)
     {
@@ -310,6 +312,7 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
         {nameof(NaNimationAllow3BoneSkinning), "Allow 3 Bone Skinning"},
         {nameof(MergeSkinnedMeshesSeparatedByDefaultEnabledState), "Keep Default Enabled State"},
         {nameof(MergeStaticMeshesAsSkinned), "Merge Static Meshes as Skinned"},
+        {nameof(AllowMeshDataDuplication), "Allow Mesh Data Duplication"},
         {nameof(MergeDifferentPropertyMaterials), "Merge Different Property Materials"},
         {nameof(MergeSameDimensionTextures), "Merge Same Dimension Textures"},
         {nameof(MergeMainTex), "Merge MainTex"},
@@ -356,6 +359,7 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
             {nameof(Settings.MMDCompatibility), true},
             {nameof(Settings.DeleteUnusedComponents), true},
             {nameof(Settings.DeleteUnusedGameObjects), false},
+            {nameof(Settings.AllowMeshDataDuplication), false},
         }),
         ("Shader Toggles", new Dictionary<string, object>() {
             {nameof(Settings.ApplyOnUpload), true},
@@ -377,6 +381,7 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
             {nameof(Settings.MMDCompatibility), true},
             {nameof(Settings.DeleteUnusedComponents), true},
             {nameof(Settings.DeleteUnusedGameObjects), false},
+            {nameof(Settings.AllowMeshDataDuplication), false},
         }),
         ("Full", new Dictionary<string, object>() {
             {nameof(Settings.ApplyOnUpload), true},
@@ -398,6 +403,7 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
             {nameof(Settings.MMDCompatibility), false},
             {nameof(Settings.DeleteUnusedComponents), true},
             {nameof(Settings.DeleteUnusedGameObjects), true},
+            {nameof(Settings.AllowMeshDataDuplication), true},
         }),
     };
 
@@ -618,6 +624,7 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
             LogToFile($"- Optimize in Play Mode: {AvatarOptimizerSettings.DoOptimizeInPlayMode}");
             LogToFile($"- Auto Refresh Preview Timeout: {AvatarOptimizerSettings.AutoRefreshPreviewTimeout} ms");
             LogToFile($"- Motion Time Approximation Sample Count: {AvatarOptimizerSettings.MotionTimeApproximationSampleCount}");
+            LogToFile($"- Shared Mesh Vertex Count Exclusion Threshold: {AvatarOptimizerSettings.SharedMeshVertexCountExclusionThreshold}");
         }
         LogToFile("Settings:");
         using (log.IndentScope())
@@ -749,6 +756,29 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
         LogToFile($"- BlendShapes: {skinnedMeshRenderers.Sum(r => r.sharedMesh == null ? 0 : r.sharedMesh.blendShapeCount)}");
         LogToFile($"- Unique Bones: {skinnedMeshRenderers.SelectMany(r => r.bones).Where(b => b != null).Distinct().Count()}");
         LogToFile($"- Renderer Material Slots: {renderers.Sum(r => r.sharedMaterials.Length)}");
+
+        var sharedSkinnedMeshes = skinnedMeshRenderers
+            .Where(r => r.sharedMesh != null)
+            .GroupBy(r => r.sharedMesh)
+            .Where(g => g.Count() > 1)
+            .Select(g => (
+                mesh: g.Key,
+                paths: g.Select(GetPathToRoot).OrderBy(path => path).ToArray()))
+            .OrderBy(g => g.mesh.name)
+            .ThenBy(g => g.paths[0])
+            .ToList();
+        if (sharedSkinnedMeshes.Count > 0)
+        {
+            LogToFile($"- Meshes shared by multiple Skinned Mesh Renderers: {sharedSkinnedMeshes.Count}");
+            foreach (var group in sharedSkinnedMeshes)
+            {
+                LogToFile($"- '{group.mesh.name}' ({group.mesh.vertexCount} vertices):", 1);
+                foreach (var path in group.paths)
+                {
+                    LogToFile($"- {path}", 2);
+                }
+            }
+        }
 
         var extraMaterialSlotRenderers = renderers.Select(r => (renderer: r, mesh: r.GetSharedMesh()))
             .Where(x => x.mesh != null && x.renderer.sharedMaterials.Length > x.mesh.subMeshCount)
@@ -3933,6 +3963,15 @@ public class d4rkAvatarOptimizer : MonoBehaviour, VRC.SDKBase.IEditorOnly
             .Where(t => t != null)
             .Select(t => (t, "Real Kiss System Mesh", true)));
         baseAutomaticExclusions.AddRange(FindAllPenetrators().Select(p => (p.transform, "Penetrator Mesh", true)));
+        if (!AllowMeshDataDuplication)
+        {
+            var threshold = AvatarOptimizerSettings.SharedMeshVertexCountExclusionThreshold;
+            baseAutomaticExclusions.AddRange(root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                .Where(r => r.sharedMesh != null)
+                .GroupBy(r => r.sharedMesh)
+                .Where(g => g.Key.vertexCount > threshold && g.Count() > 1)
+                .SelectMany(g => g.Select(r => (r.transform, $"Shared Mesh '{g.Key.name}'", false))));
+        }
 
         HashSet<Transform> CalculateAlwaysDisabledGameObjects(HashSet<Transform> exclusions)
         {

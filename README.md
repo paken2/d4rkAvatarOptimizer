@@ -127,6 +127,10 @@ This is useful to not look weird with blocked animations in case of NaNimation t
 ## Merge Static Meshes as Skinned
 Automatically converts static meshes to skinned meshes so that they can be merged with other meshes and have their materials merged as well. This only happens if the static mesh has materials that can be merged with materials from the skinned mesh it tries to get merged into.  
 Does not convert meshes on the UIMenu layer since they are mostly used for computation.
+## Allow Mesh Data Duplication
+Allows multiple Skinned Mesh Renderers that reference the same mesh asset to be optimized independently. This can duplicate mesh data in the uploaded avatar and increase download and VRAM size.
+
+When disabled, all Skinned Mesh Renderers sharing a mesh with more vertices than the global `Shared Mesh Vertex Count Exclusion Threshold` are automatically excluded from optimization. Their children are not excluded. The threshold defaults to 1024 vertices and can be changed in the Avatar Optimizer global settings.
 ## Merge Different Property Materials
 Merges materials with the same shader where properties can have different values. If they do have different values the values will get written to a constant buffer. Material IDs get written to uv.z and used to access the correct value from that cbuffer.
 

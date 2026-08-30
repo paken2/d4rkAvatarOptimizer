@@ -3,6 +3,9 @@
 * Add new option `Delete Unused Animator Parameters`.
 * Manual exclusions can now specify if they want to exclude all their children or not.
   * Old way was always exclude all children and is still the default.
+* Add `Allow Mesh Data Duplication` and automatically exclude Skinned Mesh Renderers sharing a mesh above a configurable vertex-count threshold when it is disabled. [(more)](https://github.com/d4rkc0d3r/d4rkAvatarOptimizer/issues/119)
+  * The global threshold defaults to 1024 vertices.
+  * Shared mesh groups and their renderer paths are listed in the avatar stats log.
 
 ### Changes
 * Optimizer inspector:
