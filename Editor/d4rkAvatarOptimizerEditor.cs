@@ -1452,6 +1452,7 @@ public class d4rkAvatarOptimizerEditor : Editor
             var children = includeChildren.GetArrayElementAtIndex(i);
             Transform output;
 
+            using var cc = new EditorGUI.ChangeCheckScope();
             using (new EditorGUILayout.HorizontalScope())
             {
                 output = EditorGUILayout.ObjectField(transform.objectReferenceValue, typeof(Transform), true) as Transform;
@@ -1468,7 +1469,7 @@ public class d4rkAvatarOptimizerEditor : Editor
                 }
             }
 
-            if (transform.objectReferenceValue != output)
+            if (cc.changed)
                 ClearUICaches();
             if (output != null && optimizer.GetTransformPathToRoot(output) == null)
                 output = null;
@@ -1483,8 +1484,7 @@ public class d4rkAvatarOptimizerEditor : Editor
             includeChildren.DeleteArrayElementAtIndex(i);
         }
 
-        if (serializedObject.ApplyModifiedProperties())
-            ClearUICaches();
+        serializedObject.ApplyModifiedProperties();
     }
 
     static GUIContent _perfIcon_Excellent;
